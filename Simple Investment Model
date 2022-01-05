@@ -1,0 +1,59 @@
+tic
+p=zeros(10000,1000);%K_t,i
+q=zeros(10000,1000);%I_t,i
+s=zeros(10000,1000);%Y_t,i
+t=ones(10000,1000);%VaRによる上限
+u=zeros(10000,1);%最終的なK_t,i
+m=ones(1,1000);%Kの平均
+v=ones(1,1000);%Kの分散
+a=1.35;%生産性の平均
+b=1;%生産性の分散
+c=0.05;%何パーセント下限まで許容するか
+w=a+b*norminv(c);%生産性の下限nパーセント
+r=0.02;
+theta=0.3;
+alpha=5;
+delta=0.98;
+z=0.25*(a*alpha/(1+r))^2;%生産性に引っかかる投資量
+for i=1:10000;
+    p(i,1)=1;
+end
+for k=2:1000;
+for j=1:10000;
+    t(j,k)=((w+theta)*p(j,k-1))/(1+r);
+    q(j,k)=max(0,min(z,t(j,k)));
+    p(j,k)=delta*p(j,k-1)+alpha*q(j,k)^0.5;
+    s(j,k)=(a+b*randn)*p(j,k);
+if s(j,k)<(1+r)*q(j,k);%資本を崩して返済
+p(j,k)=p(j,k)-(1/theta)*((1+r)*q(j,k)-s(j,k));
+end
+if p(j,k)<0;
+p(j,k)=1;%デフォルト
+end
+end
+m(1,k)=mean(p(:,k));
+v(1,k)=var(p(:,k));
+if abs(m(1,k)-m(1,k-1))<0.0001 & abs(v(1,k)-v(1,k-1))<0.001;
+    for l=1:10000;
+        u(l,1)=p(l,k);
+    end
+    break
+end
+end
+if p(1,1000)>0
+for l=1:10000;
+        u(l,1)=p(l,1000);
+    end
+end
+figure(1);
+histogram(u(:,1));
+title('stationary distribution of capital accumulation');
+figure(2);
+plot(p(1000,:));
+hold on
+plot(p(2000,:));
+hold on
+plot(p(3000,:));
+title('path of each firms')
+hold off
+toc
