@@ -1,0 +1,136 @@
+tic
+p=zeros(10000,1000);%K_t,i
+q=zeros(10000,1000);%b_t,i
+t=zeros(10000,1000);%aの実現値
+s=zeros(10000,1000);%Y_t,i
+x=zeros(10000,1000);%x_t,i
+p_f=zeros(1,1000);%K_t,f
+p_f(1,1)=3000;%金融機関の初期賦存
+s_f=zeros(1,1000);%Y_t,f
+x_a=zeros(10000,1000);%xの支払い
+x_b=zeros(1,1000);%xの支払い総額
+x_d=zeros(1,1000);%xの売り上げ総額
+x_e=ones(1,1000);%金融機関が破綻しているかどうか
+x_f=ones(1,1000);%金融機関がVaRの制限に引っかかっているかどうか
+u=zeros(10000,1);%最終的なK_t,i
+xx=zeros(10000,1);%最終的なx_t,i
+m=ones(1,1000);%Kの平均
+v=ones(1,1000);%Kの分散
+def=zeros(1,1000);%デフォルト率
+a=1.35;%生産性の平均
+b=1;%生産性の分散
+c=0.05;%何パーセント下限まで許容するか(普通の企業)
+c_f=0.05;%何パーセント下限まで許容するか(金融機関)
+w=a+b*norminv(c);%生産性の下限nパーセント
+r=0.02;
+gamma=0;
+theta=0.3;
+alpha=5;
+alpha_f=1;%金融機関の生産性
+delta=0.98;
+e_e=0.055;%cよりは大きくする
+d=e_e/(1+gamma);
+g=-d+(1-d)/(1+r);%xを一単位減らすと投資がこれだけ減る
+z=0.25*(a*alpha/(1+r))^2;%生産性に引っかかる投資量
+H=ones(1,1000);
+for i=1:1000;
+H(1,i)=1/(d-(x_e(1,i)/(1+r))*(1-d));
+end
+I=zeros(10000,1000);
+for i=1:1000;
+for j=1:10000;
+I(j,i)=min(z,(((alpha*a+alpha*(gamma-1-r)/(1+gamma)*e_e*H(1,i)*((w+theta)/(1+r))))/(2*(1+r)+2*((gamma-1-r)/(1+gamma))*e_e*H(1,i)))^2);
+end
+I(j,i)=min(z,(((alpha*a+alpha*(gamma-1-r)/(1+gamma)*e_e*H(1,i)*((w+theta)/(1+r))))/(2*(1+r)+2*((gamma-1-r)/(1+gamma))*e_e*H(1,i)))^2);
+end 
+for i=1:10000;
+    p(i,1)=1;
+end
+
+for k=2:1000;
+for j=1:10000;
+    x(j,k)=max(0,H(1,k)*(((w+theta)/(1+r))*(delta*p(j,k-1)+alpha*I(j,k)^0.5)-I(j,k)));
+    q(j,k)=I(j,k)+d*x(j,k);
+    p(j,k)=delta*p(j,k-1)+alpha*I(j,k)^0.5;
+    t(j,k)=a+b*randn;
+    if t(j,k)<a+b*norminv(e_e);
+    x_a(j,k)=x(j,k);
+    end
+end
+    x_b(1,k)=sum(x_a(:,k));
+    x_d(1,k)=d*sum(x(:,k));
+    p_f(1,k)=delta*p_f(1,k-1);
+    s_f(1,k)=a*p_f(1,k);
+    % p_f(1,k)=p_f(1,k)+max(0,x_d(1,k)+s_f(1,k)-x_b(1,k));
+    x_f(1,k)=min(1,((s_f(1,k)+theta*p_f(1,k))/(abs(norminv(c_f))*e_e*(1-e_e)))/x_d(1,k));
+    if x_d(1,k)>(s_f(1,k)+theta*p_f(1,k))/(abs(norminv(c_f))*e_e*(1-e_e));%金融機関のVaR
+    x_d(1,k)=x_f(1,k)*x_d(1,k);
+    x_b(1,k)=x_f(1,k)*x_b(1,k);
+    for j=1:10000;
+    I(j,k)=I(j,k)-g*x(j,k)*(1-x_f(1,k));
+    q(j,k)=q(j,k)-(1-d)/(1+r)*x(j,k)*(1-x_f(1,k));
+    x(j,k)=x_f(1,k)*x(j,k);
+    p(j,k)=delta*p(j,k-1)+alpha*I(j,k)^0.5;
+    x_a(j,k)=x_f(1,k)*x_a(j,k);
+    end
+    end
+    if x_d(1,k)+s_f(1,k)-x_b(1,k)<0;
+    p_f(1,k)=max(0,p(1,k)+(1/theta)*(x_d(1,k)+s_f(1,k)-x_b(1,k)));%資本を崩して返済
+    end
+    x_e(1,k)=min(1,((x_d(1,k)+s_f(1,k)+theta*delta*p_f(1,k-1)))/x_b(1,k));
+    p_f(1,k)=p_f(1,k)+alpha_f*max(0,(x_d(1,k)+s_f(1,k)-x_b(1,k)))^0.5;
+for j=1:10000;
+s(j,k)=t(j,k)*p(j,k)+x_e(1,k)*x_a(j,k);
+if s(j,k)<(1+r)*q(j,k);%資本を崩して返済
+p(j,k)=p(j,k)-(1/theta)*((1+r)*q(j,k)-s(j,k));
+end
+if p(j,k)<0;
+p(j,k)=1;%デフォルト
+def(1,k)=def(1,k)+1;
+end
+end
+m(1,k)=mean(p(:,k));
+v(1,k)=var(p(:,k));
+if abs(m(1,k)-m(1,k-1))<0.001 & abs(v(1,k)-v(1,k-1))<0.001 & abs(p_f(1,k-1)-p_f(1,k)<0.001);
+    for l=1:10000;
+        u(l,1)=p(l,k);
+        xx(l,1)=x(l,k);
+    end
+    break
+end
+end
+
+if p(1,1000)>0
+for l=1:10000;
+        u(l,1)=p(l,1000);
+        xx(l,1)=x(l,1000);
+    end
+end
+
+figure(1);
+histogram(u(:,1));
+title('stationary distribution of capital accumulation');
+figure(2);
+plot(p(1000,:));
+hold on
+plot(p(2000,:));
+hold on
+plot(p(3000,:));
+title('path of each firms')
+hold off
+figure(3);
+histogram(xx(:,1));
+title('demand for financial good');
+figure(4);
+hold on 
+plot(x_b(1,:));
+hold on
+plot(x_d(1,:));
+hold on
+plot(p_f(1,:));
+title('financial firms balance sheet')
+hold off
+figure(5);
+plot(def(1,:));
+title('default ratio')
+toc
