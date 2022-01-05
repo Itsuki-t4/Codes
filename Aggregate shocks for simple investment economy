@@ -1,0 +1,126 @@
+tic
+p=zeros(10000,1000);%K_t,i
+q=zeros(10000,1000);%I_t,i
+s=zeros(10000,1000);%Y_t,i
+t=ones(10000,1000);%VaRによる上限
+u=zeros(10000,1);%最終的なK_t,i
+d=zeros(10000,1);%最終的なI_t,i
+e=zeros(10000,1);%最終的なY_t,i
+m=ones(1,1000);%Kの平均
+v=ones(1,1000);%Kの分散
+a=1.35;%生産性の平均
+b=1;%生産性の分散
+c=0.05;%何パーセント下限まで許容するか
+w=a+b*norminv(c);%生産性の下限nパーセント
+r=0.02;
+theta=0.3;
+alpha=5;
+delta=0.98;
+z=0.25*(a*alpha/(1+r))^2;%生産性に引っかかる投資量
+for i=1:10000;
+    p(i,1)=1;
+end
+for k=2:1000;
+for j=1:10000;
+    t(j,k)=((w+theta)*p(j,k-1))/(1+r);
+    q(j,k)=max(0,min(z,t(j,k)));
+    p(j,k)=delta*p(j,k-1)+alpha*q(j,k)^0.5;
+    s(j,k)=(a+b*randn)*p(j,k);
+if s(j,k)<(1+r)*q(j,k);%資本を崩して返済
+p(j,k)=p(j,k)-(1/theta)*((1+r)*q(j,k)-s(j,k));
+end
+if p(j,k)<0;
+p(j,k)=1;%デフォルト
+end
+end
+m(1,k)=mean(p(:,k));
+v(1,k)=var(p(:,k));
+if abs(m(1,k)-m(1,k-1))<0.0001 & abs(v(1,k)-v(1,k-1))<0.001;
+    for l=1:10000;
+        u(l,1)=p(l,k);
+        d(l,1)=p(l,k);
+        e(l,1)=p(l,k);
+    end
+    break
+end
+end
+if p(1,1000)>0
+for l=1:10000;
+        u(l,1)=p(l,1000);
+        d(l,1)=p(l,1000);
+        e(l,1)=p(l,1000);
+    end
+end
+
+
+%aggregate shockのシミュレーション
+m_ag=zeros(1,100);
+m_ag(1,1)=mean(m(1,:));
+def_ag=zeros(1,100);
+a_ag=zeros(1,100);
+w_ag=zeros(1,100);
+p_ag=zeros(10000,100);%K_t,i
+p_ag(:,1)=u(:,1);
+q_ag=zeros(10000,100);%I_t,i
+q_ag(:,1)=d(:,1);
+s_ag=zeros(10000,100);%Y_t,i
+s_ag(:,1)=e(:,1);
+t_ag=ones(10000,100);%VaRによる上限
+z_ag=zeros(1,100);%生産性に引っかかる投資量
+exo=0.15;%どれくらいショックを与えるか
+beta=0.9;%1期経るごとにショックが減衰する
+a_ag(1,1)=a;
+for i=2:100;
+a_ag(1,i)=a-beta^(i-2)*exo;
+w_ag(1,i)=a_ag(1,i)+b*norminv(c);
+z_ag(1,i)=0.25*(a_ag(1,i)*alpha/(1+r))^2;
+end
+for k=2:100;
+for j=1:10000;
+    t_ag(j,k)=((w_ag(1,k)+theta)*p_ag(j,k-1))/(1+r);
+    q_ag(j,k)=max(0,min(z_ag(1,k),t_ag(j,k)));
+    p_ag(j,k)=delta*p_ag(j,k-1)+alpha*q_ag(j,k)^0.5;
+    s_ag(j,k)=(a_ag(1,k)+b*randn)*p_ag(j,k);
+if s_ag(j,k)<(1+r)*q_ag(j,k);%資本を崩して返済
+p_ag(j,k)=p_ag(j,k)-(1/theta)*((1+r)*q_ag(j,k)-s_ag(j,k));
+end
+if p_ag(j,k)<0;
+p_ag(j,k)=1;%デフォルト
+def_ag(1,k)=def_ag(1,k)+1;
+end
+m_ag(1,k)=mean(p_ag(:,k));
+end
+end
+
+figure(1);
+histogram(u(:,1));
+title('stationary distribution of capital accumulation');
+figure(2);
+plot(p_ag(1000,:));
+hold on
+plot(p_ag(2000,:));
+hold on
+plot(p_ag(3000,:));
+title('path of each firms')
+hold off
+figure(3);
+histogram(p_ag(:,2));
+hold on
+histogram(p_ag(:,5));
+hold on
+histogram(p_ag(:,10));
+hold on
+histogram(p_ag(:,20));
+hold on
+histogram(p_ag(:,50));
+hold off
+figure(4);
+plot(m_ag(1,:));
+title('mean of capital accumulation');
+figure(5);
+plot(def_ag(1,:));
+title('default ratio');
+figure(6);
+plot(a_ag(1,:));
+title('exogenous shock');
+toc
